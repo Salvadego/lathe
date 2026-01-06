@@ -15,6 +15,7 @@ var (
 	buildTarget string
 	workDir     string
 	verbose     bool
+	incremental bool
 )
 
 var buildCmd = &cobra.Command{
@@ -24,11 +25,12 @@ var buildCmd = &cobra.Command{
 	SilenceErrors: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		req := types.BuildRequest{
-			Mode:       types.Mode(buildMode),
-			Sources:    args,
-			TargetName: buildTarget,
-			Verbose:    verbose,
-			WorkDir:    workDir,
+			Mode:        types.Mode(buildMode),
+			Sources:     args,
+			TargetName:  buildTarget,
+			Verbose:     verbose,
+			WorkDir:     workDir,
+			Incremental: incremental,
 		}
 
 		ctx, err := build.ResolveBuildContext(req, cfg)
@@ -73,6 +75,13 @@ func init() {
 		"verbose", "v",
 		false,
 		"Verbose build output",
+	)
+
+	buildCmd.Flags().BoolVar(
+		&incremental,
+		"incremental",
+		false,
+		"Enable incremental builds",
 	)
 
 	buildCmd.RegisterFlagCompletionFunc("target", completions.CompletionFuncTarget)

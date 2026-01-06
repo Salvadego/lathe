@@ -2,21 +2,51 @@ package build
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 
+	"crypto/sha1"
+	"crypto/sha256"
+	"encoding/hex"
+
 	"github.com/Salvadego/lathe/internal/types"
 )
 
 func objectPath(ctx *types.BuildContext, src string) string {
-	base := filepath.Clean(src)
+	h := sha1.Sum([]byte(src))
+	name := hex.EncodeToString(h[:8])
 	return filepath.Join(
 		ctx.WorkDir,
 		string(ctx.Mode),
-		base+".o",
+		name+".o",
 	)
+}
+
+func buildSignature(ctx *types.BuildContext, src string) []byte {
+	h := sha256.New()
+
+	io.WriteString(h, ctx.Compiler)
+	io.WriteString(h, string(ctx.Mode))
+	io.WriteString(h, src)
+
+	for _, f := range ctx.CFlags {
+		io.WriteString(h, f)
+	}
+	for _, d := range ctx.Defines {
+		io.WriteString(h, d)
+	}
+	for _, i := range ctx.Includes {
+		io.WriteString(h, i)
+	}
+
+	return h.Sum(nil)
+}
+
+func sigPath(obj string) string {
+	return obj + ".sig"
 }
 
 func CompileObjects(ctx *types.BuildContext) ([]string, error) {
@@ -30,8 +60,10 @@ func CompileObjects(ctx *types.BuildContext) ([]string, error) {
 	for _, c := range cmds {
 		objects = append(objects, c.Output)
 
-		if !needsRebuild(c.File, c.Output) {
-			continue
+		if ctx.Incremental {
+			if !needsRebuild(ctx, c.File, c.Output) {
+				continue
+			}
 		}
 
 		if err := os.MkdirAll(filepath.Dir(c.Output), 0o755); err != nil {
@@ -47,6 +79,11 @@ func CompileObjects(ctx *types.BuildContext) ([]string, error) {
 		}
 
 		if err := cmd.Run(); err != nil {
+			return nil, err
+		}
+
+		sig := buildSignature(ctx, c.File)
+		if err := os.WriteFile(sigPath(c.Output), sig, 0644); err != nil {
 			return nil, err
 		}
 	}
@@ -118,6 +155,13 @@ func Makefile(ctx *types.BuildContext) string {
 
 	b.WriteString("CC := " + ctx.Compiler + "\n")
 	b.WriteString("CFLAGS := " + strings.Join(ctx.CFlags, " ") + "\n")
+
+	for _, d := range ctx.Defines {
+		b.WriteString("CFLAGS += -D" + d + "\n")
+	}
+	for _, i := range ctx.Includes {
+		b.WriteString("CFLAGS += -I" + i + "\n")
+	}
 	b.WriteString("LDFLAGS := " + strings.Join(ctx.LdFlags, " ") + "\n\n")
 
 	var objs []string

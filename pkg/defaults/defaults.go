@@ -14,7 +14,6 @@ func Config() config.Config {
 					"-ggdb",
 					"-O0",
 				},
-				Sanitize: true,
 			},
 			"release": {
 				CFlags: []string{

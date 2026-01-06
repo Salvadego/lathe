@@ -15,7 +15,7 @@ func CompletionFuncTarget(
 ) ([]cobra.Completion, cobra.ShellCompDirective) {
 
 	cfg := defaults.Config()
-	cfg = config.ResolveCfg(cfg)
+	cfg, _ = config.ResolveCfg(cfg)
 
 	completions := make([]cobra.Completion, 0, len(cfg.Targets))
 
@@ -35,7 +35,7 @@ func CompletionFuncMode(
 ) ([]cobra.Completion, cobra.ShellCompDirective) {
 
 	cfg := defaults.Config()
-	cfg = config.ResolveCfg(cfg)
+	cfg, _ = config.ResolveCfg(cfg)
 
 	completions := make([]cobra.Completion, 0, len(cfg.Builds))
 

@@ -8,16 +8,17 @@ const (
 )
 
 type BuildContext struct {
-	Mode     Mode
-	Compiler string
-	Sources  []string
-	Includes []string
-	Defines  []string
-	CFlags   []string
-	LdFlags  []string
-	Output   string
-	WorkDir  string
-	Verbose  bool
+	Mode        Mode
+	Compiler    string
+	Sources     []string
+	Includes    []string
+	Defines     []string
+	CFlags      []string
+	LdFlags     []string
+	Output      string
+	WorkDir     string
+	Verbose     bool
+	Incremental bool
 }
 
 type BuildRequest struct {
@@ -26,6 +27,7 @@ type BuildRequest struct {
 	TargetName string
 	Verbose    bool
 	WorkDir    string
+	Incremental bool
 }
 
 type CompileCommand struct {

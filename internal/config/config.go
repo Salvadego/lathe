@@ -16,9 +16,10 @@ type (
 	}
 
 	BuildConfig struct {
-		CFlags   []string `toml:"cflags"`
-		LdFlags  []string `toml:"ldflags"`
-		Sanitize bool     `toml:"sanitize"`
+		CFlags      []string `toml:"cflags"`
+		LdFlags     []string `toml:"ldflags"`
+		Aliases     []string `toml:"aliases"`
+		Incremental bool     `toml:"incremental"`
 	}
 
 	TargetConfig struct {
@@ -44,22 +45,26 @@ type (
 	}
 )
 
-func ResolveCfg(cfg Config) Config {
+func ResolveCfg(cfg Config) (Config, error) {
 	if p := GlobalConfigPath(); p != "" {
 		if _, err := os.Stat(p); err == nil {
-			if g, err := Load(p); err == nil {
-				cfg = Merge(cfg, g)
+			g, err := Load(p)
+			if err != nil {
+				return Config{}, err
 			}
+			cfg = Merge(cfg, g)
 		}
 	}
 
 	if _, err := os.Stat(ProjectConfigPath()); err == nil {
-		if p, err := Load(ProjectConfigPath()); err == nil {
-			cfg = Merge(cfg, p)
+		p, err := Load(ProjectConfigPath())
+		if err != nil {
+			return Config{}, err
 		}
+		cfg = Merge(cfg, p)
 	}
 
-	return cfg
+	return cfg, nil
 }
 
 func Validate(cfg Config) error {

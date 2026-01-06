@@ -19,9 +19,9 @@ var (
 )
 
 var runCmd = &cobra.Command{
-	Use:   "run [sources...] -- [program args]",
-	Short: "Build and run a target",
-	Args:  cobra.ArbitraryArgs,
+	Use:           "run [sources...] -- [program args]",
+	Short:         "Build and run a target",
+	Args:          cobra.ArbitraryArgs,
 	SilenceUsage:  true,
 	SilenceErrors: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -39,11 +39,12 @@ var runCmd = &cobra.Command{
 		}
 
 		req := types.BuildRequest{
-			Mode:       types.Mode(runMode),
-			Sources:    srcs,
-			TargetName: runTarget,
-			Verbose:    runVerbose,
-			WorkDir:    runWorkDir,
+			Mode:        types.Mode(runMode),
+			Sources:     srcs,
+			TargetName:  runTarget,
+			Verbose:     runVerbose,
+			WorkDir:     runWorkDir,
+			Incremental: incremental,
 		}
 
 		ctx, err := build.ResolveBuildContext(req, cfg)
@@ -92,6 +93,13 @@ func init() {
 		"verbose", "v",
 		false,
 		"Verbose build output",
+	)
+
+	runCmd.Flags().BoolVar(
+		&incremental,
+		"incremental",
+		false,
+		"Enable incremental builds",
 	)
 
 	runCmd.RegisterFlagCompletionFunc("target", completions.CompletionFuncTarget)

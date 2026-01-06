@@ -45,15 +45,17 @@ func ResolveBuildContext(
 	buildCfg, ok := cfg.Builds[string(req.Mode)]
 	if ok {
 		cflags = append(cflags, buildCfg.CFlags...)
-
-		if buildCfg.Sanitize {
-			sanitize := []string{
-				"-fsanitize=address,undefined",
-				"-fno-omit-frame-pointer",
+		ldflags = append(ldflags, buildCfg.LdFlags...)
+		for _, aliasName := range buildCfg.Aliases {
+			alias, ok := cfg.Aliases[aliasName]
+			if !ok {
+				return nil, fmt.Errorf("unknown alias %q", aliasName)
 			}
 
-			cflags = append(cflags, sanitize...)
-			ldflags = append(ldflags, sanitize...)
+			cflags = append(cflags, alias.CFlags...)
+			ldflags = append(ldflags, alias.LdFlags...)
+			includes = append(includes, alias.Includes...)
+			defines = append(defines, alias.Defines...)
 		}
 	}
 
@@ -87,16 +89,17 @@ func ResolveBuildContext(
 	}
 
 	ctx := &types.BuildContext{
-		Mode:     req.Mode,
-		Compiler: cc,
-		Sources:  sources,
-		Includes: includes,
-		Defines:  defines,
-		CFlags:   cflags,
-		LdFlags:  ldflags,
-		Output:   output,
-		Verbose:  req.Verbose,
-		WorkDir:  workDir,
+		Mode:        req.Mode,
+		Compiler:    cc,
+		Sources:     sources,
+		Includes:    includes,
+		Defines:     defines,
+		CFlags:      cflags,
+		LdFlags:     ldflags,
+		Output:      output,
+		Verbose:     req.Verbose,
+		WorkDir:     workDir,
+		Incremental: req.Incremental,
 	}
 
 	return ctx, nil

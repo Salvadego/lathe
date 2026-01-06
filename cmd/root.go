@@ -18,7 +18,12 @@ var rootCmd = &cobra.Command{
 	Use:   "lathe",
 	Short: "Lathe is a simple C build tool",
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-		cfg = config.ResolveCfg(defaults.Config())
+		var err error
+		cfg, err = config.ResolveCfg(defaults.Config())
+		if err != nil {
+			return err
+		}
+
 		return config.Validate(cfg)
 	},
 }

@@ -1,6 +1,6 @@
 # Lathe
 
-Lathe is a simple, declarative C build tool.  
+Lathe is a simple, declarative C build tool.
 It focuses on fast iteration, minimal configuration, and editor/tooling integration.
 
 Lathe is **not** a replacement for Make or CMake. It is intended for
@@ -10,16 +10,17 @@ small–to–medium C projects where explicitness and simplicity are preferred.
 
 ## Features
 
-- Single-command builds (`lathe build`)
-- Named targets and reusable aliases
-- Debug and release build modes
-- Incremental compilation
-- Global and project-level configuration
-- Generation of:
-  - `compile_commands.json`
-  - `compile_flags.txt`
-  - `Makefile`
-- Shell completions for targets and modes
+* Single-command builds (`lathe build`)
+* Named targets and reusable aliases
+* Debug and release build modes
+* Incremental compilation (flag-aware)
+* Global and project-level configuration
+* Generation of:
+  * `compile_commands.json`
+  * `compile_flags.txt`
+  * `Makefile`
+* Shell completions for targets and modes
+* Strict configuration validation (unknown keys are errors)
 
 ---
 
@@ -29,11 +30,11 @@ Build from source:
 
 ```sh
 go build -o lathe
-````
+```
 
 Place the binary somewhere in your `PATH`.
 
-Or simply:
+Or install directly:
 
 ```sh
 go install github.com/Salvadego/lathe@latest
@@ -51,7 +52,7 @@ Lathe reads configuration from two locations:
 2. **Project config**
    `./lathe.toml`
 
-Both files are merged. Project config overrides global config where applicable.
+Both files are merged. Project configuration overrides global configuration.
 
 ---
 
@@ -88,11 +89,15 @@ ldflags = [
     "-lX11",
 ]
 
-[alias.size]
-cflags = ["-Os"]
+[alias.sanitize]
+ldflags = [
+    "-fsanitize=address,undefined",
+    "-fno-omit-frame-pointer",
+]
 ```
 
-Aliases are reusable flag groups that can be attached to targets.
+Aliases are reusable groups of compiler and linker flags that can be shared
+across projects.
 
 ---
 
@@ -101,8 +106,7 @@ Aliases are reusable flag groups that can be attached to targets.
 ```toml
 [target.snake]
 sources = ["main.c"]
-cflags = ["-static"]
-aliases = ["raylib", "c99", "size"]
+aliases = ["raylib", "c99"]
 ```
 
 A target defines:
@@ -111,28 +115,53 @@ A target defines:
 * Optional includes and defines
 * A list of aliases to apply
 
+Compiler and linker flags are supplied via aliases and build modes.
+
 ---
 
 ## Build Modes
 
 Lathe supports named build modes. By default:
 
-* **debug**
+### `debug`
 
-  * `-ggdb`
-  * `-O0`
-  * Address + undefined behavior sanitizers enabled
+* `-ggdb`
+* `-O0`
 
-* **release**
+### `release`
 
-  * `-O3`
+* `-O3`
 
-Modes can be extended or overridden in config:
+Modes can be extended or overridden:
 
 ```toml
 [build.debug]
-cflags = ["-g3"]
-sanitize = true
+aliases = ["sanitize"]
+```
+
+Build-mode aliases are applied before target aliases.
+
+---
+
+## Incremental Builds
+
+Incremental compilation is **signature-based**.
+
+A source file is recompiled if **any** of the following change:
+
+* Compiler
+* Build mode
+* Source path
+* Compiler flags
+* Defines
+* Include paths
+
+This prevents stale object files when flags (e.g. sanitizers) are added or removed.
+
+Enable incremental builds with:
+
+```sh
+lathe build --incremental
 ```
 
 ---
@@ -153,6 +182,7 @@ Options:
 * `-m, --mode` — build mode (`debug` or `release`)
 * `-t, --target` — target name
 * `--workdir` — build output directory (default: `.lathe`)
+* `--incremental` — enable incremental compilation
 * `-v, --verbose` — print compiler and linker commands
 
 ---
@@ -202,16 +232,6 @@ Generates a standalone `Makefile`.
 
 ## Output Layout
 
-By default, build artifacts are placed under:
-
-```
-.lathe/
-  debug/
-    path/to/source.c.o
-  release/
-    path/to/source.c.o
-```
-
 Final binaries are written to:
 
 ```
@@ -240,7 +260,7 @@ Lathe provides dynamic completion for:
 * `--target`
 * `--mode`
 
-This works automatically when using a shell with completion enabled.
+This works automatically in shells with completion enabled.
 
 ---
 
@@ -253,23 +273,24 @@ This works automatically when using a shell with completion enabled.
 
 Lathe aims to stay small, predictable, and easy to reason about.
 
+---
 
 ## Motivation
 
-Lathe exists because I was tired of writing and maintaining Makefiles,
-especially repeating the same compiler and linker flags across multiple
-projects.
+Lathe exists because maintaining Makefiles becomes tedious for small projects,
+especially when repeatedly copying large sets of compiler and linker flags.
 
 Many C libraries either:
-- Require copying long lists of flags by hand, or
-- Rely on external tools (`pkg-config`, `*-config`) that are not always available or consistent
 
-This becomes particularly painful for libraries such as clients and others that
-do not reliably expose their flags in a portable way.
+* Require manually copying long flag lists, or
+* Depend on external tools (`pkg-config`, `*-config`) that are not always available or consistent
 
-Lathe 'tries' to solve this by:
-- Centralizing common flags in reusable aliases
-- Allowing those aliases to be shared globally across projects
-- Keeping build logic simple, explicit, and transparent
+This is especially painful for libraries that do not reliably expose portable
+build metadata.
 
-The goal is not abstraction, but convenience without losing control.
+Lathe tries to solve this by:
+* Centralizing common flags in reusable aliases
+* Allowing aliases to be shared globally across projects
+* Keeping build logic explicit and transparent
+
+The goal is convenience without abstraction or loss of control.
