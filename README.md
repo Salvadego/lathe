@@ -32,7 +32,12 @@ go build -o lathe
 ````
 
 Place the binary somewhere in your `PATH`.
+
 Or simply:
+
+```sh
+go install github.com/Salvadego/lathe@latest
+```
 
 ---
 
