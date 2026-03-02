@@ -7,14 +7,17 @@ import (
 	"github.com/Salvadego/lathe/internal/types"
 )
 
-func ResolveBuildContext(
+func resolveCompiler(cfg config.Config) string {
+	if cfg.Compiler.CC != "" {
+		return cfg.Compiler.CC
+	}
+	return "cc"
+}
+
+func resolveSources(
 	req types.BuildRequest,
 	cfg config.Config,
-) (*types.BuildContext, error) {
-	cc := cfg.Compiler.CC
-	if cc == "" {
-		cc = "cc"
-	}
+) ([]string, error) {
 
 	sources := req.Sources
 
@@ -30,26 +33,27 @@ func ResolveBuildContext(
 		return nil, fmt.Errorf("no source files provided")
 	}
 
-	sources, err := expandGlobs(sources)
-	if err != nil {
-		return nil, err
-	}
+	return expandGlobs(sources)
+}
 
-	var cflags []string
-	var ldflags []string
-	var includes []string
-	var defines []string
+func resolveFlags(
+	req types.BuildRequest,
+	cfg config.Config,
+) (cflags, ldflags, includes, defines []string, err error) {
 
 	cflags = append(cflags, cfg.Flags.CFlags...)
+	ldflags = append(ldflags, cfg.Flags.LdFlags...)
 
-	buildCfg, ok := cfg.Builds[string(req.Mode)]
-	if ok {
+	if buildCfg, ok := cfg.Builds[string(req.Mode)]; ok {
+
 		cflags = append(cflags, buildCfg.CFlags...)
 		ldflags = append(ldflags, buildCfg.LdFlags...)
+
 		for _, aliasName := range buildCfg.Aliases {
 			alias, ok := cfg.Aliases[aliasName]
 			if !ok {
-				return nil, fmt.Errorf("unknown alias %q", aliasName)
+				return nil, nil, nil, nil,
+					fmt.Errorf("unknown alias %q", aliasName)
 			}
 
 			cflags = append(cflags, alias.CFlags...)
@@ -58,8 +62,6 @@ func ResolveBuildContext(
 			defines = append(defines, alias.Defines...)
 		}
 	}
-
-	ldflags = append(ldflags, cfg.Flags.LdFlags...)
 
 	if target, ok := cfg.Targets[req.TargetName]; ok {
 		includes = append(includes, target.Includes...)
@@ -68,7 +70,8 @@ func ResolveBuildContext(
 		for _, aliasName := range target.Aliases {
 			alias, ok := cfg.Aliases[aliasName]
 			if !ok {
-				return nil, fmt.Errorf("unknown alias %q", aliasName)
+				return nil, nil, nil, nil,
+					fmt.Errorf("unknown alias %q", aliasName)
 			}
 
 			cflags = append(cflags, alias.CFlags...)
@@ -76,6 +79,27 @@ func ResolveBuildContext(
 			includes = append(includes, alias.Includes...)
 			defines = append(defines, alias.Defines...)
 		}
+	}
+
+	return
+}
+
+func ResolveBuildContext(
+	req types.BuildRequest,
+	cfg config.Config,
+) (*types.BuildContext, error) {
+
+	cc := resolveCompiler(cfg)
+
+	sources, err := resolveSources(req, cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	cflags, ldflags, includes, defines, err :=
+		resolveFlags(req, cfg)
+	if err != nil {
+		return nil, err
 	}
 
 	output := "a.out"

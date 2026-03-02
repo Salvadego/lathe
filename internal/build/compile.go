@@ -159,37 +159,13 @@ func Makefile(cfg config.Config, mode types.Mode) (string, error) {
 
 	var b strings.Builder
 
-	cc := cfg.Compiler.CC
-	if cc == "" {
-		cc = "cc"
-	}
-
-	b.WriteString("# ============================================\n")
-	b.WriteString("# Lathe Generated Makefile\n")
-	b.WriteString("# ============================================\n\n")
+	cc := resolveCompiler(cfg)
 
 	b.WriteString("CC := " + cc + "\n")
 	b.WriteString("BUILD_DIR := build\n")
 	b.WriteString("MODE := " + string(mode) + "\n\n")
 
-	// Base flags
-	cflags := append([]string{}, cfg.Flags.CFlags...)
-
-	if buildCfg, ok := cfg.Builds[string(mode)]; ok {
-		cflags = append(cflags, buildCfg.CFlags...)
-	}
-
-	b.WriteString("CFLAGS := " + strings.Join(cflags, " ") + "\n")
-	b.WriteString("CFLAGS += -MMD -MP\n")
-
-	ldflags := append([]string{}, cfg.Flags.LdFlags...)
-	if buildCfg, ok := cfg.Builds[string(mode)]; ok {
-		ldflags = append(ldflags, buildCfg.LdFlags...)
-	}
-
-	b.WriteString("LDFLAGS := " + strings.Join(ldflags, " ") + "\n\n")
-
-	// Targets
+	// Collect targets
 	var targetNames []string
 	for name := range cfg.Targets {
 		targetNames = append(targetNames, name)
@@ -205,14 +181,38 @@ func Makefile(cfg config.Config, mode types.Mode) (string, error) {
 	b.WriteString("ALL_OBJS :=\n\n")
 
 	for _, name := range targetNames {
+
 		target := cfg.Targets[name]
 		if len(target.Sources) == 0 {
-
 			return "", fmt.Errorf("target %q has no sources", name)
+		}
+
+		req := types.BuildRequest{
+			Mode:       mode,
+			TargetName: name,
+		}
+
+		cflags, ldflags, includes, defines, err :=
+			resolveFlags(req, cfg)
+		if err != nil {
+			return "", err
 		}
 
 		sort.Strings(target.Sources)
 
+		// Per-target flags
+		b.WriteString(name + "_CFLAGS := " + strings.Join(cflags, " ") + "\n")
+		for _, d := range defines {
+			b.WriteString(name + "_CFLAGS += -D" + d + "\n")
+		}
+		for _, i := range includes {
+			b.WriteString(name + "_CFLAGS += -I" + i + "\n")
+		}
+		b.WriteString(name + "_CFLAGS += -MMD -MP\n")
+
+		b.WriteString(name + "_LDFLAGS := " + strings.Join(ldflags, " ") + "\n\n")
+
+		// Sources
 		b.WriteString(name + "_SRCS := \\\n")
 		for i, s := range target.Sources {
 			if i == len(target.Sources)-1 {
@@ -223,23 +223,28 @@ func Makefile(cfg config.Config, mode types.Mode) (string, error) {
 		}
 		b.WriteString("\n")
 
-		b.WriteString(name + "_OBJS := $(" + name + "_SRCS:%.c=$(BUILD_DIR)/$(MODE)/%.o)\n\n")
+		// Objects
+		b.WriteString(name + "_OBJS := $(" + name + "_SRCS:%.c=$(BUILD_DIR)/$(MODE)/" + name + "/%.o)\n\n")
 		b.WriteString("ALL_OBJS += $(" + name + "_OBJS)\n\n")
 
+		// Link rule
 		b.WriteString(name + ": $(" + name + "_OBJS)\n")
-		b.WriteString("\t$(CC) $^ -o $@ $(LDFLAGS)\n\n")
+		b.WriteString("\t$(CC) $^ -o $@ $(" + name + "_LDFLAGS)\n\n")
+
+		// Compile rule per target
+		b.WriteString("$(BUILD_DIR)/$(MODE)/" + name + "/%.o: %.c\n")
+		b.WriteString("\t@mkdir -p $(dir $@)\n")
+		b.WriteString("\t$(CC) $(" + name + "_CFLAGS) -c $< -o $@\n\n")
 	}
 
 	b.WriteString("DEPS := $(ALL_OBJS:.o=.d)\n\n")
-
-	b.WriteString("$(BUILD_DIR)/$(MODE)/%.o: %.c\n")
-	b.WriteString("\t@mkdir -p $(dir $@)\n")
-	b.WriteString("\t$(CC) $(CFLAGS) -c $< -o $@\n\n")
-
 	b.WriteString("-include $(DEPS)\n\n")
 
-	b.WriteString("run: " + targetNames[0] + "\n")
-	b.WriteString("\t./" + targetNames[0] + "\n\n")
+	// Utilities
+	first := targetNames[0]
+
+	b.WriteString("run: " + first + "\n")
+	b.WriteString("\t./" + first + "\n\n")
 
 	b.WriteString("clean:\n")
 	b.WriteString("\trm -rf $(BUILD_DIR) $(TARGETS)\n\n")
@@ -252,12 +257,11 @@ func Makefile(cfg config.Config, mode types.Mode) (string, error) {
 	b.WriteString("\t@echo \"\"\n")
 	b.WriteString("\t@echo \"Lathe Makefile\"\n")
 	b.WriteString("\t@echo \"\"\n")
-	b.WriteString("\t@echo \"Targets:\"\n")
-	b.WriteString("\t@echo \"  all        Build all targets (default)\"\n")
-	b.WriteString("\t@echo \"  run        Build and run first target\"\n")
-	b.WriteString("\t@echo \"  clean      Remove build artifacts\"\n")
-	b.WriteString("\t@echo \"  list       List available binaries\"\n")
-	b.WriteString("\t@echo \"  help       Show this help message\"\n")
+	b.WriteString("\t@echo \"  make              Build all targets\"\n")
+	b.WriteString("\t@echo \"  make <target>     Build specific binary\"\n")
+	b.WriteString("\t@echo \"  make run          Run first target\"\n")
+	b.WriteString("\t@echo \"  make clean        Remove artifacts\"\n")
+	b.WriteString("\t@echo \"  make list         List targets\"\n")
 	b.WriteString("\t@echo \"\"\n")
 
 	return b.String(), nil
