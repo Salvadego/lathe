@@ -26,7 +26,7 @@ var genMakefileCmd = &cobra.Command{
 			return err
 		}
 
-		mk := build.Makefile(ctx)
+		mk := build.Makefile(ctx, cfg)
 		return os.WriteFile("Makefile", []byte(mk), 0644)
 	},
 }
