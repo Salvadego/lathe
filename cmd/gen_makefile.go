@@ -15,18 +15,8 @@ var genMakefileCmd = &cobra.Command{
 	SilenceUsage:  true,
 	SilenceErrors: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		req := types.BuildRequest{
-			Mode:       types.Mode(buildMode),
-			TargetName: buildTarget,
-			WorkDir:    workDir,
-		}
-
-		ctx, err := build.ResolveBuildContext(req, cfg)
-		if err != nil {
-			return err
-		}
-
-		mk := build.Makefile(ctx, cfg)
+		mode := types.Mode(buildMode)
+		mk := build.Makefile(cfg, mode)
 		return os.WriteFile("Makefile", []byte(mk), 0644)
 	},
 }

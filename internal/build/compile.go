@@ -152,84 +152,70 @@ func Link(ctx *types.BuildContext, objects []string) (string, error) {
 	return out, cmd.Run()
 }
 
-func Makefile(ctx *types.BuildContext, cfg config.Config) string {
+func Makefile(cfg config.Config, mode types.Mode) (string, error) {
+	if len(cfg.Targets) == 0 {
+		return "", fmt.Errorf("no targets defined in config")
+	}
+
 	var b strings.Builder
 
-	mode := string(ctx.Mode)
+	cc := cfg.Compiler.CC
+	if cc == "" {
+		cc = "cc"
+	}
 
 	b.WriteString("# ============================================\n")
 	b.WriteString("# Lathe Generated Makefile\n")
 	b.WriteString("# ============================================\n\n")
 
-	b.WriteString("CC := " + ctx.Compiler + "\n")
+	b.WriteString("CC := " + cc + "\n")
 	b.WriteString("BUILD_DIR := build\n")
-	b.WriteString("MODE := " + mode + "\n\n")
+	b.WriteString("MODE := " + string(mode) + "\n\n")
 
 	// Base flags
-	b.WriteString("CFLAGS := " + strings.Join(ctx.CFlags, " ") + "\n")
+	cflags := append([]string{}, cfg.Flags.CFlags...)
 
-	for _, d := range ctx.Defines {
-		b.WriteString("CFLAGS += -D" + d + "\n")
-	}
-	for _, i := range ctx.Includes {
-		b.WriteString("CFLAGS += -I" + i + "\n")
+	if buildCfg, ok := cfg.Builds[string(mode)]; ok {
+		cflags = append(cflags, buildCfg.CFlags...)
 	}
 
+	b.WriteString("CFLAGS := " + strings.Join(cflags, " ") + "\n")
 	b.WriteString("CFLAGS += -MMD -MP\n")
-	b.WriteString("LDFLAGS := " + strings.Join(ctx.LdFlags, " ") + "\n\n")
 
-	// ============================================
-	// TARGETS
-	// ============================================
-
-	var targetNames []string
-
-	if len(cfg.Targets) > 0 {
-		for name := range cfg.Targets {
-			targetNames = append(targetNames, name)
-		}
-		sort.Strings(targetNames)
-	} else {
-		// Fallback single target
-		targetNames = []string{ctx.Output}
+	ldflags := append([]string{}, cfg.Flags.LdFlags...)
+	if buildCfg, ok := cfg.Builds[string(mode)]; ok {
+		ldflags = append(ldflags, buildCfg.LdFlags...)
 	}
+
+	b.WriteString("LDFLAGS := " + strings.Join(ldflags, " ") + "\n\n")
+
+	// Targets
+	var targetNames []string
+	for name := range cfg.Targets {
+		targetNames = append(targetNames, name)
+	}
+	sort.Strings(targetNames)
 
 	b.WriteString("TARGETS := " + strings.Join(targetNames, " ") + "\n")
-	b.WriteString(".DEFAULT_GOAL := all\n\n")
-
+	b.WriteString(".DEFAULT_GOAL := all\n")
 	b.WriteString(".PHONY: all clean run help list\n\n")
 
 	b.WriteString("all: $(TARGETS)\n\n")
 
-	// ============================================
-	// Per Target Source + Object Generation
-	// ============================================
-
-	b.WriteString("# ============================================\n")
-	b.WriteString("# Source Layout\n")
-	b.WriteString("# ============================================\n\n")
-
 	b.WriteString("ALL_OBJS :=\n\n")
 
 	for _, name := range targetNames {
+		target := cfg.Targets[name]
+		if len(target.Sources) == 0 {
 
-		var sources []string
-
-		if t, ok := cfg.Targets[name]; ok && len(t.Sources) > 0 {
-			sources = t.Sources
-		} else {
-			sources = ctx.Sources
+			return "", fmt.Errorf("target %q has no sources", name)
 		}
 
-		if len(sources) == 0 {
-			continue
-		}
-
-		sort.Strings(sources)
+		sort.Strings(target.Sources)
 
 		b.WriteString(name + "_SRCS := \\\n")
-		for i, s := range sources {
-			if i == len(sources)-1 {
+		for i, s := range target.Sources {
+			if i == len(target.Sources)-1 {
 				b.WriteString("\t" + s + "\n")
 			} else {
 				b.WriteString("\t" + s + " \\\n")
@@ -240,20 +226,11 @@ func Makefile(ctx *types.BuildContext, cfg config.Config) string {
 		b.WriteString(name + "_OBJS := $(" + name + "_SRCS:%.c=$(BUILD_DIR)/$(MODE)/%.o)\n\n")
 		b.WriteString("ALL_OBJS += $(" + name + "_OBJS)\n\n")
 
-		// Link rule
 		b.WriteString(name + ": $(" + name + "_OBJS)\n")
 		b.WriteString("\t$(CC) $^ -o $@ $(LDFLAGS)\n\n")
 	}
 
 	b.WriteString("DEPS := $(ALL_OBJS:.o=.d)\n\n")
-
-	// ============================================
-	// Pattern Compile Rule
-	// ============================================
-
-	b.WriteString("# ============================================\n")
-	b.WriteString("# Compile Rules\n")
-	b.WriteString("# ============================================\n\n")
 
 	b.WriteString("$(BUILD_DIR)/$(MODE)/%.o: %.c\n")
 	b.WriteString("\t@mkdir -p $(dir $@)\n")
@@ -261,18 +238,8 @@ func Makefile(ctx *types.BuildContext, cfg config.Config) string {
 
 	b.WriteString("-include $(DEPS)\n\n")
 
-	// ============================================
-	// Utilities
-	// ============================================
-
-	b.WriteString("# ============================================\n")
-	b.WriteString("# Utility Targets\n")
-	b.WriteString("# ============================================\n\n")
-
-	if len(targetNames) > 0 {
-		b.WriteString("run: " + targetNames[0] + "\n")
-		b.WriteString("\t./" + targetNames[0] + "\n\n")
-	}
+	b.WriteString("run: " + targetNames[0] + "\n")
+	b.WriteString("\t./" + targetNames[0] + "\n\n")
 
 	b.WriteString("clean:\n")
 	b.WriteString("\trm -rf $(BUILD_DIR) $(TARGETS)\n\n")
@@ -292,9 +259,6 @@ func Makefile(ctx *types.BuildContext, cfg config.Config) string {
 	b.WriteString("\t@echo \"  list       List available binaries\"\n")
 	b.WriteString("\t@echo \"  help       Show this help message\"\n")
 	b.WriteString("\t@echo \"\"\n")
-	b.WriteString("\t@echo \"Build specific binary:\"\n")
-	b.WriteString("\t@echo \"  make <target>\"\n")
-	b.WriteString("\t@echo \"\"\n")
 
-	return b.String()
+	return b.String(), nil
 }
