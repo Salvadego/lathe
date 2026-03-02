@@ -16,7 +16,10 @@ var genMakefileCmd = &cobra.Command{
 	SilenceErrors: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		mode := types.Mode(buildMode)
-		mk := build.Makefile(cfg, mode)
+		mk, err := build.Makefile(cfg, mode)
+		if err != nil {
+			return err
+		}
 		return os.WriteFile("Makefile", []byte(mk), 0644)
 	},
 }
